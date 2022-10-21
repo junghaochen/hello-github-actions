@@ -11,7 +11,7 @@ _Create a GitHub Action and use it in a workflow._
 
 <!--
   <<< Author notes: Start of the course >>>
-  Include start button, a note about Actions minutes,
+  Include start button, notes about Actions minutes,
   and tell the learner why they should take the course.
   Each step should be wrapped in <details>/<summary>, with an `id` set.
   The start <details> should have `open` as well.
