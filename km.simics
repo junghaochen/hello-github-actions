@@ -1,0 +1,118 @@
+decl {
+        ! Setup a KM SDM Simple System.
+
+        group "System"
+
+        param board_name : string = "sdm"
+        ! Name of the board
+
+        param freq_mhz : float = 200
+        ! Core frequency in MHz
+
+        param timebase_freq_mhz : float = 1.0
+        ! mtime frequency in MHz
+
+        param hv_binary : file("*.elf") or nil = NIL
+        ! Please pass a hypervisor elf file that ends in .elf to specify your test
+
+        param elf_binary : file("*.elf")
+        ! Please pass an elf file that ends in .elf to specify your test
+
+        group "Components"
+
+        result system : string
+        ! The system component
+
+        result console : string or nil
+        ! The console component
+}
+
+load-module std-comp
+load-module km-sdm-comp
+load-module console-components
+
+$system = (create-km-sdm-comp 
+		name = $board_name
+                freq_mhz = $freq_mhz
+                timebase_freq_mhz = $timebase_freq_mhz)
+# Initialize the system
+instantiate-components
+
+# create and connect the console to stty0 (can be 0-7)
+$console = (create-txt-console-comp
+                        title = "control-world"
+                        fg_color = "orange"
+                        bg_color = "black")
+
+if $hv_binary != NIL {
+    $system.rvu->debug_tty_consoles = 4
+}
+connect $system.uart0_serial $console.serial
+instantiate-components
+
+list-objects -tree
+
+#$system.cpu_complex.phys_mem.map
+memory-map
+
+# Short hard variables
+$cpu = ($system.rvu.hart[0])
+
+echo "Simics started"
+
+log-level -r $cpu 4
+#log-level -r $system.uart0 4
+#log-level -r $system.prci 4
+#log-level -r $system.clint 4
+#log-level -r $system.plic 4
+#log-level -r $system.test_finisher 4
+
+#$system.rvu->debug_force_wgid_by_address = TRUE
+#
+#list-objects -tree
+#@crypto = conf.sdm.noc.segment.peripheral.crypto_reg
+## For early testing, all addresses from hart will be marked with the wid listed in the table
+#@conf.sdm.rvu.debug.wgmarker_map.mark_by_addr = [
+#    #( name, world, base, length)
+#    ["hypervisor",7, 0x00000000, 0xFFFFFFFF],
+#]
+$system.rvu.hart_mem.map
+memory-map
+#sdm.rvu.dump-world-guard-id-memory-maps
+
+
+# Load the ELF images into the memory
+echo "\nLoad images into memory\n"
+if $hv_binary == NIL {
+    echo "No HV-Image"
+    # load Zephyr image as main entry
+    $entry = ($cpu.load-binary -pa $elf_binary)
+    add-symbol-file $elf_binary
+} else{
+    echo "hv_binary = %s" % $hv_binary 
+    # Entry is HV image
+    $entry = ($cpu.load-binary -pa $hv_binary)
+    add-symbol-file $hv_binary
+    # load Zephyr image
+    $cpu.load-binary -pa $elf_binary    
+    add-symbol-file $elf_binary
+}
+echo "elf_binary = %s\n" % $elf_binary
+
+# Setting the PC to start at the entry point (beginning of the tester code = 0x100000)
+$cpu.set-pc $entry
+echo "Entry point:   0x%x\n" % $entry
+
+# Enable the debugger to allow for breakpoints
+enable-debugger
+
+enable-reverse-execution
+output-radix 16
+
+#sdm.rvu.hart_mem.add-map sdm.uart0.bank.regs 0x10000000 0x40000 priority = -1
+@uart_out=open('uart.log', 'w')
+text_console0.con->output_file=uart.log
+
+# Run the simulation
+#r
+
